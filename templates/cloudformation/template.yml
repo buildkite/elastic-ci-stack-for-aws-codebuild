@@ -1,0 +1,177 @@
+---
+Description: Buildkite Elastic Stack for Lambda/CodeBuild
+
+Parameters:
+  BuildkiteGraphQLToken:
+    Description: Buildkite GraphQL Token
+    Type: 'AWS::SSM::Parameter::Value<String>'
+    Default: /buildkite/graphql_token
+
+  BuildkiteQueue:
+    Description: Queue name that agents will use, targeted in pipeline steps using "queue={value}"
+    Type: String
+    Default: default
+    MinLength: 1
+
+  LambdaBucket:
+    Type: String
+    Default: "buildkite-aws-codebuild-lox"
+
+  LambdaObjectVersion:
+    Type: String
+    Default: "lzXRHAP64Lr.W3LJA6pr0k4C2Lnj6WfU"
+
+Resources:
+  HandleBuildkiteWebhookLambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: create-codebuild-build
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - codebuild:StartBuild
+                  - codebuild:BatchGetBuilds
+
+  # This mirrors the group that would be created by the lambda, but enforces
+  # a retention period and also ensures it's removed when the stack is removed
+  HandleBuildkiteWebhookScalerLogGroup:
+    Type: "AWS::Logs::LogGroup"
+    Properties:
+      LogGroupName: !Join ["/", ["/aws/lambda", !Ref HandleBuildkiteWebhookFunction]]
+      RetentionInDays: 1
+
+  HandleBuildkiteWebhookFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Code:
+        S3Bucket: !Ref LambdaBucket
+        S3Key: "handle-buildkite-webhook.zip"
+        S3ObjectVersion: !Ref LambdaObjectVersion
+      Role: !GetAtt HandleBuildkiteWebhookLambdaExecutionRole.Arn
+      Timeout: 120
+      Handler: handler
+      Runtime: go1.x
+      MemorySize: 128
+      Environment:
+        Variables:
+          BUILDKITE_QUEUE: !Ref BuildkiteQueue
+          BUILDKITE_GRAPHQL_TOKEN: !Ref BuildkiteGraphQLToken
+          CODEBUILD_PROJECT: !Ref CodeBuildProject
+
+  ApiGateway:
+    Type: "AWS::ApiGateway::RestApi"
+    Properties:
+      Description: "A test API"
+      Name: "MyRestAPI"
+
+  ApiGatewayRootMethod:
+    Type: "AWS::ApiGateway::Method"
+    Properties:
+      AuthorizationType: "NONE"
+      HttpMethod: "POST"
+      Integration:
+        IntegrationHttpMethod: "POST"
+        Type: "AWS_PROXY"
+        Uri: !Sub
+          - "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${lambdaArn}/invocations"
+          - lambdaArn: !GetAtt "HandleBuildkiteWebhookFunction.Arn"
+      ResourceId: !GetAtt "ApiGateway.RootResourceId"
+      RestApiId: !Ref "ApiGateway"
+
+  ApiGatewayDeployment:
+    Type: "AWS::ApiGateway::Deployment"
+    DependsOn:
+      - "ApiGatewayRootMethod"
+    Properties:
+      RestApiId: !Ref "ApiGateway"
+      StageName: "call"
+
+  LambdaApiGatewayInvoke:
+    Type: "AWS::Lambda::Permission"
+    Properties:
+      Action: "lambda:InvokeFunction"
+      FunctionName: !GetAtt "HandleBuildkiteWebhookFunction.Arn"
+      Principal: "apigateway.amazonaws.com"
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/"
+
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: /
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: write-to-cloudwatch-logs
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+        - PolicyName: access-agent-token
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Resource: "*"
+                Effect: Allow
+                Action:
+                  - ssm:DescribeParameters
+              - Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/buildkite/agent_token"
+                Effect: Allow
+                Action:
+                  - ssm:GetParameters
+
+  # By default, the build specification is defined in this template, but you can also add buildspec.yml
+  # files in your repos to allow for customization.
+  # See:
+  # https://docs.aws.amazon.com/codebuild/latest/userguide/build-spec-ref.html
+  # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-properties-codebuild-project-source.html
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: NO_ARTIFACTS
+      Source:
+        Type: S3
+        Location: !Sub "${LambdaBucket}/buildkite-agent-codebuild.zip"
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Type: LINUX_CONTAINER
+        Image: "aws/codebuild/docker:18.09.0"
+      Name: !Ref AWS::StackName
+      ServiceRole: !Ref CodeBuildServiceRole
+
+Outputs:
+  ApiGatewayInvokeURL:
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/call"
+
+  HandleBuildkiteWebhookFunctionArn:
+    Value: !GetAtt "HandleBuildkiteWebhookFunction.Arn"
+
+  CodeBuildProjectArn:
+    Value: !Ref CodeBuildProject
+

@@ -1,0 +1,15 @@
+---
+version: 0.2
+
+env:
+  parameter-store:
+    BUILDKITE_AGENT_TOKEN: "/buildkite/agent_token"
+
+phases:
+  pre_build:
+    commands:
+      - bash -c "`curl -sL https://raw.githubusercontent.com/buildkite/agent/master/install.sh`"
+
+  build:
+    commands:
+      - ~/.buildkite-agent/bin/buildkite-agent start --no-color --tags="job=${BUILDKITE_JOB_ID}" --disconnect-after-job
