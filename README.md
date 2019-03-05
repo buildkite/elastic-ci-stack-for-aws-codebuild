@@ -6,7 +6,7 @@ The advantage of this is CodeBuild is well isolated and provides a docker daemon
 
 https://docs.aws.amazon.com/codebuild/latest/userguide/limits.html
 
-### Notess
+### Notes
 
 - Lambda receives webhooks from BK for job on queue (say `default`)
 - Lambda creates compute with an agent that will have a queue like `job-{uuid}`
@@ -14,13 +14,7 @@ https://docs.aws.amazon.com/codebuild/latest/userguide/limits.html
 - Compute starts up, agent starts up with `--disconnect-after-job`
 - Build runs, finishes, compute finishes
 
-For compute, there are a few options:
+### Questions?
 
-1) codebuild
-
-- Create a build in a given pipeline (in CodeBuild parlance)
-
-
-Questions?
-
-* Is latency acceptable? Each job in this model has to start a new cb build
+* Is ~20s job start time acceptable?
+* How do we protect the agent registration token in each environment?
