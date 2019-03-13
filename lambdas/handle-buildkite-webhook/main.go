@@ -15,6 +15,10 @@ import (
 	"github.com/buildkite/elastic-ci-stack-for-aws-codebuild/buildkite"
 )
 
+const (
+	agentQueryRuleTemplate = `queue=job-%s`
+)
+
 func handleRequest(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	log.Printf("Processing request data for request %s.\n", request.RequestContext.RequestID)
 	log.Printf("Body size = %d.\n", len(request.Body))
@@ -102,7 +106,10 @@ func requeueJob(jobUUID string, graphQLToken string) error {
 
 	log.Printf("Found GraphQL ID of %s", jobID)
 
-	return client.ChangeJobQueryRule(jobID, fmt.Sprintf("job=%s", jobUUID))
+	query := fmt.Sprintf(agentQueryRuleTemplate, jobUUID)
+	log.Printf("Rewriting job query rule to %s", query)
+
+	return client.ChangeJobQueryRule(jobID, query)
 }
 
 func startCodeBuildEnvironment(project string, jobUUID string) error {

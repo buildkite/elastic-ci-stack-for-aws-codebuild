@@ -19,7 +19,7 @@ Parameters:
 
   LambdaObjectVersion:
     Type: String
-    Default: "lzXRHAP64Lr.W3LJA6pr0k4C2Lnj6WfU"
+    Default: ""
 
 Resources:
   HandleBuildkiteWebhookLambdaExecutionRole:
@@ -64,7 +64,7 @@ Resources:
         S3Key: "handle-buildkite-webhook.zip"
         S3ObjectVersion: !Ref LambdaObjectVersion
       Role: !GetAtt HandleBuildkiteWebhookLambdaExecutionRole.Arn
-      Timeout: 120
+      Timeout: 60
       Handler: handler
       Runtime: go1.x
       MemorySize: 128

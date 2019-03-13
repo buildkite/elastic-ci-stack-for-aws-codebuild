@@ -12,4 +12,4 @@ phases:
 
   build:
     commands:
-      - ~/.buildkite-agent/bin/buildkite-agent start --no-color --tags="job=${BUILDKITE_JOB_ID}" --disconnect-after-job
+      - ~/.buildkite-agent/bin/buildkite-agent start --no-color --tags="queue=job-${BUILDKITE_JOB_ID}" --disconnect-after-job
