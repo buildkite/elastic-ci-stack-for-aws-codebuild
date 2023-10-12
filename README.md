@@ -1,3 +1,6 @@
+> [!IMPORTANT]
+> This experiment is no longer under development, and is not maintained/supported.
+
 # Elastic CI Stack for AWS Lambda and CodeBuild
 
 This is an experimental stack to explore the use of AWS Lambda for terminating Buildkite webhooks and then AWS CodeBuild for execution of workloads.
